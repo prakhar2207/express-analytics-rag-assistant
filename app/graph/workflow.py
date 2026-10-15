@@ -7,7 +7,8 @@ from app.graph.nodes import (
     document_grading_node,
     query_rewrite_node,
     web_fallback_node,
-    generation_node
+    generation_node,
+    hallucination_check_node
 )
 from app.core.config import settings
 
@@ -66,8 +67,10 @@ def build_rag_graph():
     # Connect web fallback to generation
     workflow.add_edge("web_fallback", "generation")
 
-    # End after generation
-    workflow.add_edge("generation", END)
+    # Bonus: Groundedness check (Self-RAG)
+    workflow.add_node("hallucination_check", hallucination_check_node)
+    workflow.add_edge("generation", "hallucination_check")
+    workflow.add_edge("hallucination_check", END)
 
     return workflow.compile()
 

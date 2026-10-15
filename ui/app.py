@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import json
+import uuid
 
 API_BASE_URL = "http://localhost:8000"
 
@@ -10,51 +11,91 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🤖 Self-Corrective RAG Documentation Assistant")
-st.caption("Powered by LangGraph, FastAPI, and ChromaDB — Built for Express Analytics Assessment")
+# Initialize Session ID for conversational memory
+if "session_id" not in st.session_state:
+    st.session_state["session_id"] = f"session_{uuid.uuid4().hex[:6]}"
 
-tab_chat, tab_docs, tab_ingest = st.tabs(["💬 Assistant Q&A", "📚 Indexed Corpus", "📥 Ingest New Docs"])
+if "chat_history" not in st.session_state:
+    st.session_state["chat_history"] = []
+
+st.sidebar.title("⚙️ Session Controls")
+st.sidebar.info(f"**Session ID:** `{st.session_state['session_id']}`")
+if st.sidebar.button("🔄 Clear Conversation Memory"):
+    st.session_state["session_id"] = f"session_{uuid.uuid4().hex[:6]}"
+    st.session_state["chat_history"] = []
+    st.session_state.pop("last_result", None)
+    st.rerun()
+
+st.title("🤖 Self-Corrective RAG Documentation Assistant")
+st.caption("Powered by LangGraph (CRAG + Self-RAG), FastAPI, and ChromaDB — Express Analytics Assessment")
+
+tab_chat, tab_docs, tab_ingest = st.tabs(["💬 Conversational Q&A", "📚 Indexed Corpus", "📥 Ingest New Docs"])
 
 with tab_chat:
-    st.subheader("Ask a Question")
+    st.subheader("Ask a Question (Follow-ups Supported)")
     st.markdown("Ask anything about FastAPI dependencies, background tasks, security, or middleware.")
 
-    user_query = st.text_input(
-        "Enter your query:",
-        placeholder="e.g. How do I use dependencies with yield to clean up database connections?"
-    )
+    # Display dialogue history
+    for msg in st.session_state["chat_history"]:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            if "metadata" in msg:
+                m = msg["metadata"]
+                st.caption(f"Type: `{m.get('query_type')}` | Retries: `{m.get('retries_used')}` | Grounded: `{m.get('is_grounded')}`")
 
-    if st.button("Submit Question", type="primary"):
-        if not user_query.strip():
-            st.warning("Please enter a question.")
-        else:
-            with st.spinner("Analyzing query, retrieving documents, and verifying relevance..."):
-                try:
-                    res = requests.post(f"{API_BASE_URL}/query", json={"question": user_query}, timeout=60)
-                    if res.status_code == 200:
-                        data = res.json()
-                        st.session_state["last_query"] = user_query
-                        st.session_state["last_result"] = data
-                    else:
-                        st.error(f"Error {res.status_code}: {res.text}")
-                except Exception as e:
-                    st.error(f"Failed to connect to FastAPI backend: {e}. Ensure `uvicorn app.main:app` is running.")
+    # User query input
+    user_query = st.chat_input("Enter your technical question or follow-up:")
 
+    if user_query:
+        # Append user message
+        st.session_state["chat_history"].append({"role": "user", "content": user_query})
+        
+        with st.spinner("Analyzing query, retrieving documents, and verifying relevance..."):
+            try:
+                res = requests.post(
+                    f"{API_BASE_URL}/query",
+                    json={"question": user_query, "session_id": st.session_state["session_id"]},
+                    timeout=60
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    st.session_state["last_result"] = data
+                    st.session_state["chat_history"].append({
+                        "role": "assistant",
+                        "content": data["answer"],
+                        "metadata": {
+                            "query_type": data.get("query_type"),
+                            "retries_used": data.get("retries_used"),
+                            "is_grounded": data.get("is_grounded"),
+                            "sources": data.get("sources", [])
+                        }
+                    })
+                    st.rerun()
+                else:
+                    st.error(f"Error {res.status_code}: {res.text}")
+            except Exception as e:
+                st.error(f"Failed to connect to FastAPI backend: {e}. Ensure `uvicorn app.main:app` is running.")
+
+    # Show details for latest assistant response
     if "last_result" in st.session_state:
         res_data = st.session_state["last_result"]
-        st.markdown("### Answer")
-        st.markdown(res_data["answer"])
+        
+        st.divider()
+        st.markdown("### 📊 Latest Response Telemetry & Citations")
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Query Type", res_data.get("query_type") or "N/A")
+            st.metric("Query Intent", res_data.get("query_type") or "N/A")
         with col2:
-            st.metric("Rewrites / Retries", res_data.get("retries_used", 0))
+            st.metric("Rewrite Retries", res_data.get("retries_used", 0))
         with col3:
             st.metric("Latency", f"{res_data.get('execution_time_sec', 0)}s")
+        with col4:
+            grounded_label = "✅ Grounded" if res_data.get("is_grounded", True) else "⚠️ Hallucination Warning"
+            st.metric("Self-RAG Grounded", grounded_label)
 
         if res_data.get("sources"):
-            st.markdown("### 📖 Citations & Sources Grounding")
+            st.markdown("#### 📖 Citations & Sources Grounding")
             for i, src in enumerate(res_data["sources"]):
                 with st.expander(f"Source {i+1}: {src.get('source')} (Section: {src.get('section') or 'General'})"):
                     st.markdown(f"**Snippet Preview:**\n> {src.get('snippet')}")
@@ -72,7 +113,7 @@ with tab_chat:
             fb_res = requests.post(
                 f"{API_BASE_URL}/feedback",
                 json={
-                    "query": st.session_state["last_query"],
+                    "query": res_data["question"],
                     "answer": res_data["answer"],
                     "rating": rating_val,
                     "comment": comment

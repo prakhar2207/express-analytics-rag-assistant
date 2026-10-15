@@ -16,3 +16,4 @@ class GraphState(TypedDict):
     max_retries: int                      # Maximum retry ceiling to avoid infinite loops
     is_grounded: Optional[bool]           # Hallucination / groundedness check outcome
     web_fallback_used: bool               # Flag indicating whether web search fallback was used
+    chat_history: Optional[str]           # Prior conversation turns for coreference resolution

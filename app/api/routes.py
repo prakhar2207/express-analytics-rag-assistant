@@ -19,6 +19,7 @@ from app.graph.workflow import rag_app
 from app.ingestion.indexer import document_indexer
 from app.services.vector_store import get_all_indexed_documents
 from app.services.feedback_service import feedback_service
+from app.services.memory_service import memory_service
 from app.core.config import settings
 
 router = APIRouter()
@@ -27,13 +28,18 @@ router = APIRouter()
 async def query_assistant(request: QueryRequest):
     """
     Executes the self-corrective LangGraph pipeline:
-    1. Query Analysis & Expansion
+    1. Query Analysis & Expansion (with session coreference resolution)
     2. Retrieval from ChromaDB
     3. Document Grading (LLM evaluation)
     4. Adaptive query rewriting (if irrelevant) or Web Fallback
     5. Grounded Answer Generation with explicit citations
+    6. Self-RAG Groundedness validation
     """
     start_time = time.perf_counter()
+    
+    # Retrieve conversation history if session_id provided
+    history_str = memory_service.format_history_for_prompt(request.session_id) if request.session_id else ""
+
     initial_state = {
         "question": request.question,
         "query_type": None,
@@ -46,6 +52,7 @@ async def query_assistant(request: QueryRequest):
         "max_retries": settings.MAX_RETRIES,
         "is_grounded": None,
         "web_fallback_used": False,
+        "chat_history": history_str,
     }
 
     try:
@@ -57,6 +64,11 @@ async def query_assistant(request: QueryRequest):
         )
 
     execution_time = round(time.perf_counter() - start_time, 3)
+    generated_answer = final_state.get("generation", "No answer generated.")
+
+    # Record in conversational memory if session_id is active
+    if request.session_id:
+        memory_service.add_interaction(request.session_id, request.question, generated_answer)
 
     # Format source citations
     citations_output = []
@@ -69,11 +81,13 @@ async def query_assistant(request: QueryRequest):
 
     return QueryResponse(
         question=request.question,
-        answer=final_state.get("generation", "No answer generated."),
+        answer=generated_answer,
         sources=citations_output,
         query_type=final_state.get("query_type"),
         retries_used=final_state.get("retry_count", 0),
         web_fallback_used=final_state.get("web_fallback_used", False),
+        is_grounded=final_state.get("is_grounded", True),
+        session_id=request.session_id,
         execution_time_sec=execution_time
     )
 

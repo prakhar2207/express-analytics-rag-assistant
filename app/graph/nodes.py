@@ -19,20 +19,28 @@ class DocumentGrade(BaseModel):
     is_relevant: bool = Field(description="True if the document chunk contains information relevant to answering the query, False otherwise")
     rationale: str = Field(description="Brief reason for the decision")
 
+class HallucinationGrade(BaseModel):
+    is_grounded: bool = Field(description="True if the generated answer is directly supported by the context; False if hallucinated.")
+    rationale: str = Field(description="Brief explanation of groundedness.")
+
 # --- Node Implementations ---
 
 def query_analysis_node(state: GraphState) -> Dict[str, Any]:
     """
     Node 1: Analyzes the user question, classifies intent, and optimizes query for retrieval.
+    Also incorporates prior conversational context for coreference resolution.
     """
     question = state["question"]
+    chat_history = state.get("chat_history") or "No prior conversation."
     
     prompt = ChatPromptTemplate.from_messages([
         ("system", (
             "You are an expert technical documentation assistant. "
             "Analyze the user's question about Python/FastAPI/frameworks.\n"
+            "Previous Conversation History:\n{chat_history}\n\n"
             "1. Classify query_type into one of: 'conceptual', 'how-to', 'troubleshooting', 'api_reference'.\n"
-            "2. Generate an expanded_query that clarifies ambiguities and adds technical keywords or synonyms to optimize vector retrieval.\n"
+            "2. Generate an expanded_query that resolves any pronouns/coreferences based on conversation history, "
+            "clarifies ambiguities, and adds technical keywords to optimize vector retrieval.\n"
             "Respond strictly in JSON format matching the schema."
         )),
         ("human", "Question: {question}")
@@ -42,7 +50,7 @@ def query_analysis_node(state: GraphState) -> Dict[str, Any]:
         llm = get_llm(temperature=0.0)
         structured_llm = llm.with_structured_output(QueryAnalysisOutput)
         chain = prompt | structured_llm
-        analysis: QueryAnalysisOutput = chain.invoke({"question": question})
+        analysis: QueryAnalysisOutput = chain.invoke({"question": question, "chat_history": chat_history})
         return {
             "query_type": analysis.query_type,
             "transformed_query": analysis.expanded_query
@@ -205,3 +213,36 @@ def generation_node(state: GraphState) -> Dict[str, Any]:
         "generation": answer,
         "citations": list(set(citations))
     }
+
+def hallucination_check_node(state: GraphState) -> Dict[str, Any]:
+    """
+    Bonus Node: Self-RAG groundedness check verifying whether generated answer
+    is strictly supported by the retrieved documentation context.
+    """
+    generation = state.get("generation", "")
+    docs = state.get("relevant_docs", [])
+
+    if not docs:
+        return {"is_grounded": True}
+
+    context = "\n".join([d.get("content", "") for d in docs])
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", (
+            "You are a strict Self-RAG groundedness grader. Determine if the assistant's answer "
+            "is factually supported by and grounded in the retrieved documentation context.\n"
+            "Score is_grounded as True if supported, or False if the answer introduces unsupported claims."
+        )),
+        ("human", "Retrieved Context:\n{context}\n\nGenerated Answer:\n{generation}")
+    ])
+
+    try:
+        llm = get_llm(temperature=0.0)
+        grader = llm.with_structured_output(HallucinationGrade)
+        chain = prompt | grader
+        grade: HallucinationGrade = chain.invoke({
+            "context": context[:2500],
+            "generation": generation
+        })
+        return {"is_grounded": grade.is_grounded}
+    except Exception:
+        return {"is_grounded": True}

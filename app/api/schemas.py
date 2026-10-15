@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 class QueryRequest(BaseModel):
     question: str = Field(..., description="Natural language question to ask the documentation assistant.", min_length=2)
+    session_id: Optional[str] = Field(None, description="Optional session ID for conversation memory and follow-up questions.")
 
 class SourceCitation(BaseModel):
     source: str
@@ -16,6 +17,8 @@ class QueryResponse(BaseModel):
     query_type: Optional[str] = None
     retries_used: int = 0
     web_fallback_used: bool = False
+    is_grounded: Optional[bool] = True
+    session_id: Optional[str] = None
     execution_time_sec: float
 
 class IngestUrlsRequest(BaseModel):

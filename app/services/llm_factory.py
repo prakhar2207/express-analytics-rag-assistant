@@ -71,6 +71,12 @@ class OfflineMockStructuredRunnable(Runnable):
                 rationale="Content contains matching technical keywords." if is_rel else "Content does not address the question."
             )
 
+        elif "Hallucination" in schema_name:
+            return self.schema(
+                is_grounded=True,
+                rationale="Answer is fully grounded in the retrieved documentation sections."
+            )
+
         # Generic default instance
         try:
             return self.schema()
