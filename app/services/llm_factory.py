@@ -115,15 +115,27 @@ class OfflineMockChatModel(BaseChatModel):
             citations = re.findall(r"(\[.*?\])", context_block)
             cit_str = f" {citations[0]}" if citations else ""
             
-            # Extract first meaningful code block or explanation
+            # Clean and format lines: remove markdown heading hashes to prevent giant headers
             clean_context = context_block.replace("--- Document Source", "\nSource").strip()
-            first_lines = [l.strip() for l in clean_context.split("\n") if l.strip() and not l.startswith("Source") and not l.startswith("---")][:4]
-            snippet_summary = " ".join(first_lines)
+            raw_lines = [l.strip() for l in clean_context.split("\n") if l.strip() and not l.startswith("Source") and not l.startswith("---")]
+            
+            formatted_paragraphs = []
+            for line in raw_lines[:6]:
+                # Convert markdown headers like '## Title' into clean bold headers '**Title**'
+                if line.startswith("#"):
+                    clean_line = line.lstrip("#").strip()
+                    formatted_paragraphs.append(f"\n**{clean_line}:**\n")
+                elif line.startswith("*") or line.startswith("-"):
+                    formatted_paragraphs.append(f"- {line.lstrip('*- ').strip()}")
+                else:
+                    formatted_paragraphs.append(line)
+            
+            snippet_summary = "\n".join(formatted_paragraphs)
             
             answer = (
                 f"Based on the official technical documentation{cit_str}:\n\n"
                 f"{snippet_summary}\n\n"
-                f"Refer to the cited documentation sections for the complete implementation parameters."
+                f"Refer to the cited documentation sections for implementation details."
             )
             return ChatResult(generations=[ChatGeneration(message=AIMessage(content=answer))])
 
