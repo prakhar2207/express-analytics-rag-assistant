@@ -1,13 +1,17 @@
 import os
+import logging
 from typing import Dict, Any, List
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
+from langchain_core.messages import SystemMessage, HumanMessage
 from pydantic import BaseModel, Field
 
 from app.graph.state import GraphState
-from app.services.llm_factory import get_llm
+from app.services.llm_factory import get_llm, OfflineMockChatModel
 from app.services.vector_store import similarity_search_with_metadata
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # --- Pydantic Data Structures for Structured Outputs ---
 
@@ -207,7 +211,13 @@ def generation_node(state: GraphState) -> Dict[str, Any]:
 
     llm = get_llm(temperature=0.1)
     chain = gen_prompt | llm | StrOutputParser()
-    answer = chain.invoke({"question": question, "context": context_str})
+    try:
+        answer = chain.invoke({"question": question, "context": context_str})
+    except Exception as e:
+        logger.warning(f"Generation LLM failed ({e}), falling back to offline grounded generation.")
+        fallback_llm = OfflineMockChatModel()
+        res = fallback_llm.invoke([SystemMessage(content=context_str), HumanMessage(content=question)])
+        answer = res.content
 
     return {
         "generation": answer,

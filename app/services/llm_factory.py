@@ -155,13 +155,13 @@ def get_llm(
     If no API key is set, automatically falls back to OfflineMockChatModel
     so graph workflows and tests run seamlessly out of the box.
     """
-    selected_provider = (provider or settings.LLM_PROVIDER).lower()
+    selected_provider = (provider or os.getenv("LLM_PROVIDER") or settings.LLM_PROVIDER).lower()
     
     if selected_provider == "groq":
         api_key = settings.GROQ_API_KEY or os.getenv("GROQ_API_KEY")
         if api_key:
             from langchain_groq import ChatGroq
-            model = model_name or settings.LLM_MODEL or "llama-3.3-70b-versatile"
+            model = model_name or os.getenv("LLM_MODEL") or settings.LLM_MODEL or "llama-3.3-70b-versatile"
             return ChatGroq(
                 groq_api_key=api_key,
                 model_name=model,
@@ -175,7 +175,7 @@ def get_llm(
         api_key = settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY")
         if api_key:
             from langchain_openai import ChatOpenAI
-            model = model_name or "gpt-4o-mini"
+            model = model_name or os.getenv("LLM_MODEL") or settings.LLM_MODEL or "gpt-4o-mini"
             return ChatOpenAI(
                 api_key=api_key,
                 model_name=model,
@@ -189,7 +189,7 @@ def get_llm(
         api_key = settings.GOOGLE_API_KEY or os.getenv("GOOGLE_API_KEY")
         if api_key:
             from langchain_google_genai import ChatGoogleGenerativeAI
-            model = model_name or "gemini-1.5-flash"
+            model = model_name or os.getenv("LLM_MODEL") or settings.LLM_MODEL or "gemini-1.5-flash"
             return ChatGoogleGenerativeAI(
                 google_api_key=api_key,
                 model=model,
