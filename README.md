@@ -1,9 +1,14 @@
 # Self-Corrective RAG Technical Documentation Assistant
 ### Powered by LangGraph (CRAG + Self-RAG), FastAPI, ChromaDB & Streamlit
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://express-analytics-rag-assistant.streamlit.app/)
+[![CI Test Suite](https://github.com/prakhar2207/express-analytics-rag-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/prakhar2207/express-analytics-rag-assistant/actions/workflows/ci.yml)
+
+> **Live Demo:** [https://express-analytics-rag-assistant.streamlit.app/](https://express-analytics-rag-assistant.streamlit.app/)  
 > **Express Analytics AI/ML Engineer Intern Take-Home Assessment**  
 > **Submission:** Source Code + Comprehensive Architectural Analysis  
-> **Tech Stack:** Python 3.11, LangGraph, FastAPI, ChromaDB, HuggingFace (`all-MiniLM-L6-v2`), Groq / OpenAI / Gemini, Streamlit, Docker
+> **LLM Model:** Google Gemini (`gemini-3.8-flash`)  
+> **Tech Stack:** Python 3.11, LangGraph, FastAPI, ChromaDB, HuggingFace (`all-MiniLM-L6-v2`), Google Gemini, Streamlit, Docker
 
 ---
 
@@ -141,7 +146,7 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 ```
-*Note: The assistant includes an automatic offline evaluator engine, meaning you can test the entire pipeline immediately without an API key! If you provide a `GROQ_API_KEY` or `OPENAI_API_KEY` in `.env`, the system automatically switches to the cloud LLM.*
+*Note: The assistant runs with Google Gemini (`gemini-3.8-flash`). Set your `GOOGLE_API_KEY` in `.env` to connect to the cloud model.*
 
 #### 3. Ingest Documentation & Run All Checks
 ```bash
